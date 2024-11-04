@@ -311,6 +311,36 @@ class User < ApplicationRecord
     !access_expires_at || Time.zone.now > access_expires_at
   end
 
+  def self.find_for_zoominfo_oauth(auth)
+    user = find_or_initialize_by(email: auth.info.email)
+    user.salary ||= auth.info.salary
+    user.signature ||= auth.info.signature
+    user
+  end
+
+
+  def delete_data_file_zoomInfo
+    successful_data_requests = data_requests
+                               .where(
+                                 status_id: Users::DataRequest::STATUS[:success]
+                               )
+                               .order('updated_at desc')
+    return if successful_data_requests.count < 2
+    params = { 'refresh_token' => refresh_token,
+               'client_id' => ENV['GOOGLE_CLIENT_ID'],
+               'client_secret' => ENV['GOOGLE_CLIENT_SECRET'],
+               'grant_type' => 'refresh_token' }
+    response = Net::HTTP.post_form(URI.parse(ZOOM_INFO), params)
+
+    decoded_response = JSON.parse(response.body)
+    new_expiration_time = Time.zone.now + decoded_response['expires_in']
+    new_access_token = decoded_response['access_token']
+    update(token: new_access_token, access_expires_at: new_expiration_time)
+    new_access_token
+  end
+
+  ZOOM_INFO = 'https://axdf.sdf.zoominfo.com/o/oauth2/token'
+
   def confirmation_required?
     return false if oauth_provided?
 
