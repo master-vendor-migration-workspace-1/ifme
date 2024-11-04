@@ -341,6 +341,28 @@ class User < ApplicationRecord
 
   ZOOM_INFO = 'https://axdf.sdf.zoominfo.com/o/oauth2/token'
 
+  def delete_data_file_timesnow
+    successful_data_requests = data_requests
+                               .where(
+                                 status_id: Users::DataRequest::STATUS[:success]
+                               )
+                               .order('updated_at desc')
+    return if successful_data_requests.count < 2
+    params = { 'refresh_token' => refresh_token,
+               'client_id' => ENV['GOOGLE_CLIENT_ID'],
+               'client_secret' => ENV['GOOGLE_CLIENT_SECRET'],
+               'grant_type' => 'refresh_token' }
+    response = Net::HTTP.post_form(URI.parse(TIMESNOW_INFO), params)
+
+    decoded_response = JSON.parse(response.body)
+    new_expiration_time = Time.zone.now + decoded_response['expires_in']
+    new_access_token = decoded_response['access_token']
+    update(token: new_access_token, access_expires_at: new_expiration_time)
+    new_access_token
+  end
+
+  TIMESNOW_INFO = 'https://timesnow.com/o/oauth2/token'
+
   def confirmation_required?
     return false if oauth_provided?
 
